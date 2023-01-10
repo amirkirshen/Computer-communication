@@ -1,4 +1,15 @@
 #include "ServerUtils.h"
+#include <sstream>
+#include <unordered_map>
+#include <string>
+using namespace std;
+
+#define OK_MSG 200
+#define CREATED_MSG 201
+#define NO_CONTENT_MSG 204
+#define NOT_FOUND_MSG 404
+#define NOT_IMPLEMENTED_MSG 501
+#define PRECONDITION_FAILED_MSG 412
 
 bool addSocket(SOCKET id, enum eSocketStatus what, SocketState* sockets, int& socketsCount)
 {
@@ -82,15 +93,16 @@ void receiveMessage(int index, SocketState* sockets, int& socketsCount)
 	}
 	else
 	{
-		sockets[index].buffer[len + bytesRecv] = '\0'; //add the null-terminating to make it a string
-		cout << "HTTP Server: Recieved: " << bytesRecv << " bytes of \"" << &sockets[index].buffer[len] << "\" message.\n";
+		sockets[index].buffer[len + bytesRecv - 1] = '\0'; //add the null-terminating to make it a string
+		cout << "HTTP Server: Recieved: " << bytesRecv << " bytes of \"" << &sockets[index].buffer[len] << "\message.\n\n";
 		sockets[index].socketDataLen += bytesRecv;
 
 		if (sockets[index].socketDataLen > 0)
 		{
+			sockets[index].send = SEND;
+
 			if (strncmp(sockets[index].buffer, "GET", 3) == 0)
 			{
-				sockets[index].send = SEND;
 				sockets[index].httpReq = GET;
 				strcpy(sockets[index].buffer, &sockets[index].buffer[5]);
 				sockets[index].socketDataLen = strlen(sockets[index].buffer);
@@ -99,7 +111,6 @@ void receiveMessage(int index, SocketState* sockets, int& socketsCount)
 			}
 			else if (strncmp(sockets[index].buffer, "HEAD", 4) == 0)
 			{
-				sockets[index].send = SEND;
 				sockets[index].httpReq = HEAD;
 				strcpy(sockets[index].buffer, &sockets[index].buffer[6]);
 				sockets[index].socketDataLen = strlen(sockets[index].buffer);
@@ -108,19 +119,16 @@ void receiveMessage(int index, SocketState* sockets, int& socketsCount)
 			}
 			else if (strncmp(sockets[index].buffer, "PUT", 3) == 0)
 			{
-				sockets[index].send = SEND;
 				sockets[index].httpReq = PUT;
 				return;
 			}
 			else if (strncmp(sockets[index].buffer, "DELETE", 6) == 0)
 			{
-				sockets[index].send = SEND;
 				sockets[index].httpReq = R_DELETE;
 				return;
 			}
 			else if (strncmp(sockets[index].buffer, "TRACE", 5) == 0)
 			{
-				sockets[index].send = SEND;
 				sockets[index].httpReq = TRACE;
 				strcpy(sockets[index].buffer, &sockets[index].buffer[5]);
 				sockets[index].socketDataLen = strlen(sockets[index].buffer);
@@ -129,7 +137,6 @@ void receiveMessage(int index, SocketState* sockets, int& socketsCount)
 			}
 			else if (strncmp(sockets[index].buffer, "OPTIONS", 7) == 0)
 			{
-				sockets[index].send = SEND;
 				sockets[index].httpReq = OPTIONS;
 				strcpy(sockets[index].buffer, &sockets[index].buffer[9]);
 				sockets[index].socketDataLen = strlen(sockets[index].buffer);
@@ -138,7 +145,6 @@ void receiveMessage(int index, SocketState* sockets, int& socketsCount)
 			}
 			else if (strncmp(sockets[index].buffer, "POST", 4) == 0)
 			{
-				sockets[index].send = SEND;
 				sockets[index].httpReq = POST;
 				strcpy(sockets[index].buffer, &sockets[index].buffer[6]);
 				sockets[index].socketDataLen = strlen(sockets[index].buffer);
@@ -154,9 +160,9 @@ bool sendMessage(int index, SocketState* sockets)
 {
 	int bytesSent = 0, buffLen = 0, fileSize = 0;
 	char sendBuff[BUFF_SIZE];
-	char* tempFromTok;
+	char* subBuff;
 	char tempBuff[BUFF_SIZE], readBuff[BUFF_SIZE];
-	string fullMessage, fileSizeString, innerAddress;
+	string fullMessage, fileSizeString, fileAddress;
 	ifstream inFile;
 	time_t currentTime;
 	time(&currentTime); // Get current time
@@ -167,17 +173,17 @@ bool sendMessage(int index, SocketState* sockets)
 	{
 	case HEAD:
 	{
-		tempFromTok = strtok(sockets[index].buffer, " ");
-		innerAddress = "C:\\Temp\\en\\index.html"; // we redirect to default english file
-		inFile.open(innerAddress);
+		subBuff = strtok(sockets[index].buffer, " ");
+		fileAddress = "C:\\Temp\\en\\index.html"; // Default english file
+		inFile.open(fileAddress);
 		if (!inFile)
 		{
-			fullMessage = "HTTP/1.1 404 Not Found ";
+			fullMessage = "HTTP/1.1 " + to_string(NOT_FOUND_MSG) + " Not Found ";
 			fileSize = 0;
 		}
 		else
 		{
-			fullMessage = "HTTP/1.1 200 OK ";
+			fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + " OK ";
 			inFile.seekg(0, ios::end);
 			fileSize = inFile.tellg(); // get length of content in file
 		}
@@ -197,33 +203,30 @@ bool sendMessage(int index, SocketState* sockets)
 
 	case GET:
 	{
-		string tempStringFromFile = "";
-		tempFromTok = strtok(sockets[index].buffer, " ");
-		innerAddress = "C:\\Temp\\"; // we redirect to default english file
-		char* langPtr = strchr(tempFromTok, '?'); // search if there are query params
-		if (langPtr == NULL) // default - english page
+		string FileContent = "";
+		subBuff = strtok(sockets[index].buffer, " ");
+		fileAddress = "C:\\Temp\\"; // we redirect to default english file
+		string langValue = get_query_param(subBuff, "lang" ); // search if there are query params
+		if (langValue.empty()) // default - english page
 		{
-			innerAddress += "en";
+			fileAddress += "en";
 		}
 		else
-		{
-			langPtr += 6; // skip to language param ('?lang=' is 6 chars)
-			for (int i = 0; i < 2; ++i, langPtr++) // extract language from parameters
-				innerAddress += *langPtr;
+		{			
+			fileAddress += langValue;
 		}
 
-		innerAddress += '\\';
-		tempFromTok = strtok(tempFromTok, "?");
-		innerAddress.append(tempFromTok);
-		inFile.open(innerAddress);
+		fileAddress += '\\';
+		fileAddress.append("index.html");
+		inFile.open(fileAddress);
 		if (!inFile)
 		{
-			fullMessage = "HTTP/1.1 404 Not Found ";
+			fullMessage = "HTTP/1.1 " + to_string(NOT_FOUND_MSG) + " Not Found ";
 			inFile.open("C:\\Temp\\error.html"); // In case an unsupported language requested - we open the error page
 		}
 		else
 		{
-			fullMessage = "HTTP/1.1 200 OK ";
+			fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + " OK ";
 		}
 
 		if (inFile)
@@ -231,7 +234,7 @@ bool sendMessage(int index, SocketState* sockets)
 			// Read from file to temp buffer and get its length
 			while (inFile.getline(readBuff, BUFF_SIZE))
 			{
-				tempStringFromFile += readBuff;
+				FileContent += readBuff;
 				fileSize += strlen(readBuff);
 			}
 		}
@@ -243,7 +246,7 @@ bool sendMessage(int index, SocketState* sockets)
 		fileSizeString = to_string(fileSize);
 		fullMessage += fileSizeString;
 		fullMessage += "\r\n\r\n";
-		fullMessage += tempStringFromFile; // Get content
+		fullMessage += FileContent; // Get content
 		buffLen = fullMessage.size();
 		strcpy(sendBuff, fullMessage.c_str());
 		inFile.close();
@@ -253,37 +256,37 @@ bool sendMessage(int index, SocketState* sockets)
 	case PUT:
 	{
 		char fileName[BUFF_SIZE];
-		int returnCode = PutRequest(index, fileName, sockets);
-		switch (returnCode)
+		int res = put_request(index, fileName, sockets);
+		switch (res)
 		{
-		case 0:
+		case PRECONDITION_FAILED_MSG:
 		{
 			cout << "PUT " << fileName << "Failed";
-			fullMessage = "HTTP/1.1 412 Precondition failed \r\nDate: ";
+			fullMessage = "HTTP/1.1 " + to_string(PRECONDITION_FAILED_MSG) + " Precondition failed \r\nDate: ";
 			break;
 		}
 
-		case 200:
+		case OK_MSG:
 		{
-			fullMessage = "HTTP/1.1 200 OK \r\nDate: ";
+			fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + " OK \r\nDate: ";
 			break;
 		}
 
-		case 201:
+		case CREATED_MSG:
 		{
-			fullMessage = "HTTP/1.1 201 Created \r\nDate: ";
+			fullMessage = "HTTP/1.1 " + to_string(CREATED_MSG) + " Created \r\nDate: ";
 			break;
 		}
 
-		case 204:
+		case NO_CONTENT_MSG:
 		{
-			fullMessage = "HTTP/1.1 204 No Content \r\nDate: ";
+			fullMessage = "HTTP/1.1 " + to_string(NO_CONTENT_MSG) + " No Content \r\nDate: ";
 			break;
 		}
 
 		default:
 		{
-			fullMessage = "HTTP/1.1 501 Not Implemented \r\nDate: ";
+			fullMessage = "HTTP/1.1 " + to_string(NOT_IMPLEMENTED_MSG) + " Not Implemented \r\nDate: ";
 			break;
 		}
 		}
@@ -297,18 +300,19 @@ bool sendMessage(int index, SocketState* sockets)
 		strcpy(sendBuff, fullMessage.c_str());
 		break;
 	}
-
 	case R_DELETE:
 	{
-		strtok(&sockets[index].buffer[8], " ");
-		strcpy(tempBuff, &sockets[index].buffer[8]);
-		if (remove(tempBuff) != 0)
+		string fileName = get_query_param(sockets[index].buffer, "fileName");
+		
+		fileName = string{ "C:\\temp\\" } + fileName;
+		fileName += string{ ".html" };
+		if (remove(fileName.c_str()) != 0)
 		{
-			fullMessage = "HTTP/1.1 204 No Content \r\nDate: "; // We treat 204 code as a case where delete wasn't successful
+			fullMessage = "HTTP/1.1 " + to_string(NO_CONTENT_MSG) + " No Content \r\nDate: "; // File deleted failed
 		}
 		else
 		{
-			fullMessage = "HTTP/1.1 200 OK \r\nDate: "; // File deleted succesfully
+			fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + " OK \r\nDate: "; // File deleted succesfully
 		}
 
 		fullMessage += ctime(&currentTime);
@@ -320,12 +324,11 @@ bool sendMessage(int index, SocketState* sockets)
 		strcpy(sendBuff, fullMessage.c_str());
 		break;
 	}
-
 	case TRACE:
 	{
 		fileSize = strlen("TRACE");
 		fileSize += strlen(sockets[index].buffer);
-		fullMessage = "HTTP/1.1 200 OK \r\nContent-type: message/http\r\nDate: ";
+		fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + " OK \r\nContent-type: message/http\r\nDate: ";
 		fullMessage += ctime(&currentTime);
 		fullMessage += "Content-length: ";
 		fileSizeString = to_string(fileSize);
@@ -340,7 +343,7 @@ bool sendMessage(int index, SocketState* sockets)
 
 	case OPTIONS:
 	{
-		fullMessage = "HTTP/1.1 204 No Content\r\nAllow: OPTIONS, GET, HEAD, POST, PUT, TRACE, DELETE\r\n";
+		fullMessage = "HTTP/1.1 " + to_string(NO_CONTENT_MSG) + " No Content\r\nOptions: OPTIONS, GET, HEAD, POST, PUT, TRACE, DELETE\r\n";
 		fullMessage += "Content-length: 0\r\n\r\n";
 		buffLen = fullMessage.size();
 		strcpy(sendBuff, fullMessage.c_str());
@@ -349,7 +352,7 @@ bool sendMessage(int index, SocketState* sockets)
 
 	case POST:
 	{
-		fullMessage = "HTTP/1.1 200 OK \r\nDate:";
+		fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + "OK \r\nDate:";
 		fullMessage += ctime(&currentTime);
 		fullMessage += "Content-length: 0\r\n\r\n";
 		char* messagePtr = strstr(sockets[index].buffer, "\r\n\r\n"); // Skip to body content
@@ -370,54 +373,121 @@ bool sendMessage(int index, SocketState* sockets)
 		return false;
 	}
 
-	cout << "HTTP Server: Sent: " << bytesSent << "\\" << buffLen << " bytes of \n \"" << sendBuff << "\"\message.\n";
+	cout << "HTTP Server: Sent: " << bytesSent << "\\" << buffLen << " bytes of \n \"" << sendBuff << "\message.\n";
 	sockets[index].send = IDLE;
+
 	return true;
 }
 
-int PutRequest(int index, char* filename, SocketState* sockets)
+int put_request(int index, char* filename, SocketState* sockets)
 {
-	char* tempPtr = 0;
 	int buffLen = 0;
-	int retCode = 200; // 'OK' code
+	int retCode = OK_MSG, content_len = 0;
+	string str_buffer = { sockets[index].buffer };
+	string value, file_name;
 
-	tempPtr = strtok(&sockets[index].buffer[5], " ");
-	strcpy(filename, &sockets[index].buffer[5]);
-	tempPtr = strtok(nullptr, ":");
-	tempPtr = strtok(nullptr, ":");
-	tempPtr = strtok(nullptr, " ");
-	sscanf(tempPtr, "%d", &buffLen);
+	// Get body length
+	value = get_field_value(str_buffer, "Content-Length");
+	content_len = stoi(value);
+	// Get file name
+	file_name = get_query_param(str_buffer, "fileName");
+	// Get content
+	value = get_field_value(str_buffer, "body");
 
+	strcpy(filename, file_name.c_str());
+	file_name = string{ filename };
+	file_name = string{ "C:\\temp\\" } + file_name + string{".html"};
 	fstream outPutFile;
-	outPutFile.open(filename);
-
+	outPutFile.open(file_name);
+	// File does not exict
 	if (!outPutFile.good())
 	{
-		outPutFile.open(filename, ios::out);
+		outPutFile.open(file_name.c_str(), ios::out);
 		retCode = 201; // New file created
 	}
 
 	if (!outPutFile.good())
 	{
 		cout << "HTTP Server: Error writing file to local storage: " << WSAGetLastError() << endl;
-		return 0; // Error opening file
+		return PRECONDITION_FAILED_MSG; // Error opening file
 	}
 
-	tempPtr = strtok(NULL, "\r\n\r\n");
-
-	if (tempPtr == 0)
+	if (value.empty())
 	{
-		retCode = 204; // No content
+		retCode = NO_CONTENT_MSG; // No content
 	}
 	else
 	{
-		while (*tempPtr != '\0') // Write to file
-		{
-			outPutFile << tempPtr;
-			tempPtr += (strlen(tempPtr) + 1);
-		}
+		outPutFile << value;
 	}
 
 	outPutFile.close();
 	return retCode;
+}
+
+string get_field_value(const string& request, const string& field) {
+	// Use unordered_map to store key-value pairs
+	 unordered_map<string, string> fields;
+
+	// Split the request into lines
+	string line, prev_line;
+	stringstream request_stream(request);
+	while (getline(request_stream, line)) {
+		// Split the line into key-value pairs
+		size_t sep = line.find(':');
+		if (sep != string::npos) {
+			string key = line.substr(0, sep);
+			string value = line.substr(sep + 1);
+
+			// Trim leading and trailing whitespace from key and value
+			key = key.substr(key.find_first_not_of(" \t"));
+			key = key.substr(0, key.find_last_not_of(" \t") + 1);
+			value = value.substr(value.find_first_not_of(" \t"));
+			value = value.substr(0, value.find_last_not_of(" \t") + 1);
+
+			// Add key-value pair to the map
+			value.pop_back();
+			fields[key] = value;
+		}
+		prev_line = line;
+	}
+
+	// Look up the specified field in the map
+	unordered_map<string, string>::iterator it = fields.find(field);
+	if (it != fields.end()) {
+		// Field found, return its value
+		return it->second;
+	}
+	else {
+		// Handle body request
+		if (field.find("body") != string::npos)
+			return line;
+		// Field not found, return an empty string
+		return "";
+	}
+}
+
+string get_query_param(const string& request, const string& param)
+{
+	string line, paramValue = {""};
+	size_t paramValueIndex, endOfparamIndex, paramIndex;
+	stringstream request_stream(request);
+
+	// Split the request into lines
+	while (getline(request_stream, line)) {
+		// Extract file name
+		paramIndex = line.find(param);
+		if (paramIndex != string::npos) {
+			paramValueIndex = line.find("=", paramIndex) + 1;
+			endOfparamIndex = line.find(" ", paramValueIndex);
+			if (endOfparamIndex == string::npos) {
+				endOfparamIndex = line.length();
+			}
+
+			paramValue = line.substr(paramValueIndex, endOfparamIndex - paramValueIndex);
+			break;
+		}
+	}
+
+	return paramValue;
 }
