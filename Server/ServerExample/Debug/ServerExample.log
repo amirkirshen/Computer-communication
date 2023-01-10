@@ -1,0 +1,6 @@
+﻿  ServerUtils.cpp
+C:\Users\amirk\OneDrive - The Academic College of Tel-Aviv Jaffa - MTA\תקשורת מחשבים\Ex03\Computer-communication\Server\ServerExample\ServerUtils.cpp(97,102): warning C4129: 'm': unrecognized character escape sequence
+C:\Users\amirk\OneDrive - The Academic College of Tel-Aviv Jaffa - MTA\תקשורת מחשבים\Ex03\Computer-communication\Server\ServerExample\ServerUtils.cpp(188,27): warning C4244: '=': conversion from 'std::streamoff' to 'int', possible loss of data
+C:\Users\amirk\OneDrive - The Academic College of Tel-Aviv Jaffa - MTA\תקשורת מחשבים\Ex03\Computer-communication\Server\ServerExample\ServerUtils.cpp(376,100): warning C4129: 'm': unrecognized character escape sequence
+C:\Users\amirk\OneDrive - The Academic College of Tel-Aviv Jaffa - MTA\תקשורת מחשבים\Ex03\Computer-communication\Server\ServerExample\ServerUtils.cpp(164,7): warning C4101: 'tempBuff': unreferenced local variable
+  ServerExample.vcxproj -> C:\Users\amirk\OneDrive - The Academic College of Tel-Aviv Jaffa - MTA\תקשורת מחשבים\Ex03\Computer-communication\Server\Debug\ServerExample.exe

@@ -152,19 +152,19 @@ void main()
 			return;
 		}
 
-		for (int i = 0; i < MAX_SOCKETS && nfd > 0; i++)
+		for (int socket_index = 0; socket_index < MAX_SOCKETS && nfd > 0; socket_index++)
 		{
-			if (FD_ISSET(sockets[i].id, &waitRecv))
+			if (FD_ISSET(sockets[socket_index].id, &waitRecv))
 			{
 				nfd--;
-				switch (sockets[i].recv)
+				switch (sockets[socket_index].recv)
 				{
 				case LISTEN:
-					acceptConnection(i, sockets, socketsCount);
+					acceptConnection(socket_index, sockets, socketsCount);
 					break;
 
 				case RECEIVE:
-					receiveMessage(i, sockets, socketsCount);
+					receiveMessage(socket_index, sockets, socketsCount);
 					break;
 				}
 			}
