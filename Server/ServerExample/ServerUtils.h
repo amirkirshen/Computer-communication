@@ -55,3 +55,6 @@ bool sendMessage(int index, SocketState* sockets);
 int put_request(int index, char* filename, SocketState* sockets);
 string get_field_value(const string& request, const string& field);
 string get_query_param(const string& request, const string& param);
+
+template <typename TP>
+time_t parse_to_time_t(TP tp);

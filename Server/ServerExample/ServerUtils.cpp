@@ -2,6 +2,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <string>
+#include <filesystem>
 using namespace std;
 
 #define OK_MSG 200
@@ -93,7 +94,7 @@ void receiveMessage(int index, SocketState* sockets, int& socketsCount)
 	}
 	else
 	{
-		sockets[index].buffer[len + bytesRecv - 1] = '\0'; //add the null-terminating to make it a string
+		sockets[index].buffer[len + bytesRecv - 1] = '\0'; // Add the null-terminating to make it a string
 		cout << "HTTP Server: Recieved: " << bytesRecv << " bytes of \"" << &sockets[index].buffer[len] << "\message.\n\n";
 		sockets[index].socketDataLen += bytesRecv;
 
@@ -185,12 +186,19 @@ bool sendMessage(int index, SocketState* sockets)
 		{
 			fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + " OK ";
 			inFile.seekg(0, ios::end);
-			fileSize = inFile.tellg(); // get length of content in file
+			fileSize = inFile.tellg(); // Get length of content in file
 		}
+
+		// Get the last time that the file was modified
+		std::time_t timtTType = parse_to_time_t(filesystem::last_write_time(std::filesystem::path{ fileAddress }));
+		std::tm* gmt = std::gmtime(&timtTType);
+		std::stringstream buffer;
+		buffer << std::put_time(gmt, "%A, %d %B %Y %H:%M");
+		std::string formattedFileModifiedTime = buffer.str();
 
 		fullMessage += "\r\nContent-type: text/html";
 		fullMessage += "\r\nDate:";
-		fullMessage += ctime(&currentTime);
+		fullMessage += formattedFileModifiedTime;
 		fullMessage += "Content-length: ";
 		fileSizeString = to_string(fileSize);
 		fullMessage += fileSizeString;
@@ -352,12 +360,12 @@ bool sendMessage(int index, SocketState* sockets)
 
 	case POST:
 	{
-		fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + "OK \r\nDate:";
+		fullMessage = "HTTP/1.1 " + to_string(OK_MSG) + " OK \r\nDate:";
 		fullMessage += ctime(&currentTime);
 		fullMessage += "Content-length: 0\r\n\r\n";
-		char* messagePtr = strstr(sockets[index].buffer, "\r\n\r\n"); // Skip to body content
+		string bodyMessage = get_field_value(string{ sockets[index].buffer }, string{ "body" });
 		cout << "==================\nMessage received\n\n==================\n"
-			<< messagePtr + 4 << "\n==================\n\n";
+			<< bodyMessage << "\n==================\n\n";
 		buffLen = fullMessage.size();
 		strcpy(sendBuff, fullMessage.c_str());
 		break;
@@ -398,30 +406,44 @@ int put_request(int index, char* filename, SocketState* sockets)
 	file_name = string{ filename };
 	file_name = string{ "C:\\temp\\" } + file_name + string{".html"};
 	fstream outPutFile;
-	outPutFile.open(file_name);
-	// File does not exict
-	if (!outPutFile.good())
+	if (file_name.find("error") != string::npos)
 	{
-		outPutFile.open(file_name.c_str(), ios::out);
-		retCode = 201; // New file created
-	}
+		try
+		{
+			outPutFile.open(file_name);
+			// File does not exict
+			if (!outPutFile.good())
+			{
+				outPutFile.open(file_name.c_str(), ios::out);
+				retCode = 201; // New file created
+			}
 
-	if (!outPutFile.good())
-	{
-		cout << "HTTP Server: Error writing file to local storage: " << WSAGetLastError() << endl;
-		return PRECONDITION_FAILED_MSG; // Error opening file
-	}
+			if (!outPutFile.good())
+			{
+				cout << "HTTP Server: Error writing file to local storage: " << WSAGetLastError() << endl;
+				retCode = PRECONDITION_FAILED_MSG; // Error opening file
+			}
 
-	if (value.empty())
-	{
-		retCode = NO_CONTENT_MSG; // No content
+			if (value.empty())
+			{
+				retCode = NO_CONTENT_MSG; // No content
+			}
+			else
+			{
+				outPutFile << value;
+			}
+		}
+		catch (const std::exception&)
+		{
+			outPutFile.close();
+
+		}
 	}
 	else
 	{
-		outPutFile << value;
+		cout << "HTTP Server: Error writing file to local storage: 'Error' name is not allowed" << endl;
+		retCode = PRECONDITION_FAILED_MSG; // Error opening file
 	}
-
-	outPutFile.close();
 	return retCode;
 }
 
@@ -455,13 +477,21 @@ string get_field_value(const string& request, const string& field) {
 	// Look up the specified field in the map
 	unordered_map<string, string>::iterator it = fields.find(field);
 	if (it != fields.end()) {
-		// Field found, return its value
 		return it->second;
 	}
 	else {
 		// Handle body request
 		if (field.find("body") != string::npos)
-			return line;
+		{
+			std::string body = "";
+
+			// Find the start of the body
+			size_t body_start = request.find("\r\n\r\n");
+			if (body_start != std::string::npos)
+				body = request.substr(body_start + 4);
+
+			return body;
+		}
 		// Field not found, return an empty string
 		return "";
 	}
@@ -490,4 +520,13 @@ string get_query_param(const string& request, const string& param)
 	}
 
 	return paramValue;
+}
+
+template <typename TP>
+std::time_t parse_to_time_t(TP tp)
+{
+	using namespace std::chrono;
+	auto sctp = time_point_cast<system_clock::duration>(tp - TP::clock::now()
+		+ system_clock::now());
+	return system_clock::to_time_t(sctp);
 }
